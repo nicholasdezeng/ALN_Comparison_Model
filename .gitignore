@@ -1,0 +1,29 @@
+# Mac 系统残留
+.DS_Store
+
+# Python 缓存
+__pycache__/
+*.py[cod]
+*$py.class
+
+# 模型权重文件（建议加上更多的后缀，防止大文件塞爆仓库）
+*.pth
+*.pt
+*.ckpt
+*.h5
+
+# 数据集与图片（如果你的项目包含大量测试图，目前的写法没问题）
+*.png
+*.jpg
+*.jpeg
+*.gif
+
+# 虚拟环境（非常建议加上，防止把整个环境传上去）
+venv/
+.venv/
+env/
+
+# IDE 配置
+.vscode/
+.idea/
+

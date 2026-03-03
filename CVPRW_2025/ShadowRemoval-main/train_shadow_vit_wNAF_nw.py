@@ -11,7 +11,7 @@ from utils.UTILS import AverageMeters, print_args_parameters, Lion, compute_ssim
 import loss.losses as losses
 from torch.utils.tensorboard import SummaryWriter
 from functools import partial
-from datasets.datasets_pairs import my_dataset, my_dataset_eval
+from datasets.datasets_pairs import my_dataset, my_dataset_separate_dirs
 from networks.NAFNet_arch import NAFNet
 from networks.MaeVit_arch import MaskedAutoencoderViT
 from networks.shadow_matte import ShadowMattePredictor
@@ -145,6 +145,8 @@ parser.add_argument('--experiment_name', type=str, default="train_nafnet_wmatte_
 parser.add_argument('--unified_path', type=str, default='/root/autodl-tmp/SR_1/')
 parser.add_argument('--T_period', type=int, default=50)
 parser.add_argument('--training_path', type=str, default='../data/aug_images', help='Training images folder')
+parser.add_argument('--input_dir', type=str, default=None, help='Input images directory (separate from gt_dir)')
+parser.add_argument('--gt_dir', type=str, default=None, help='GT images directory (separate from input_dir)')
 parser.add_argument('--writer_dir', type=str, default='/root/tf-logs/')
 parser.add_argument('--infer_path', type=str, default='./test/input', help='Inference input images folder')
 parser.add_argument('--iteration_target', type=int, default=75000)
@@ -201,7 +203,10 @@ print(time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time())))
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
 
 def get_full_dataset():
-    return my_dataset(root_dir=args.training_path, crop_size=args.img_size, fix_sample_A=fix_sampleA, regular_aug=args.Aug_regular)
+    if args.input_dir and args.gt_dir:
+        return my_dataset_separate_dirs(input_dir=args.input_dir, gt_dir=args.gt_dir, crop_size=args.img_size, fix_sample_A=fix_sampleA, regular_aug=args.Aug_regular)
+    else:
+        return my_dataset(root_dir=args.training_path, crop_size=args.img_size, fix_sample_A=fix_sampleA, regular_aug=args.Aug_regular)
 
 full_dataset = get_full_dataset()
 train_size = int(0.8 * len(full_dataset))

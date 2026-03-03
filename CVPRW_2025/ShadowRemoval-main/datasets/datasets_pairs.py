@@ -7,6 +7,80 @@ import torchvision.transforms as transforms
 from torch.utils.data import Dataset,DataLoader
 
 
+class my_dataset_separate_dirs(Dataset):
+    def __init__(self, input_dir, gt_dir, crop_size=256, fix_sample_A=999, regular_aug=False):
+        super(my_dataset_separate_dirs, self).__init__()
+        self.regular_aug = regular_aug
+        self.fix_sample_A = fix_sample_A
+
+        in_files = sorted(os.listdir(input_dir))
+        gt_files = sorted(os.listdir(gt_dir))
+        
+        if self.fix_sample_A > len(in_files):
+            self.fix_sample_A = len(in_files)
+        
+        in_files = in_files[:self.fix_sample_A]
+        gt_files = gt_files[:self.fix_sample_A]
+        
+        self.imgs_in = [os.path.join(input_dir, k) for k in in_files]
+        self.imgs_gt = [os.path.join(gt_dir, k) for k in gt_files]
+
+        self.length = len(self.imgs_in)
+        self.crop_size = crop_size
+        
+    def __getitem__(self, index):
+        data_IN, data_GT, img_name = self.read_imgs_pair(self.imgs_in[index], self.imgs_gt[index],
+                                                         self.train_transform, self.crop_size)
+        return data_IN, data_GT, img_name
+
+    def read_imgs_pair(self, in_path, gt_path, transform, crop_size):
+        img_name = in_path.split('/')[-1]
+        in_img = np.array(Image.open(in_path))
+        gt_img = np.array(Image.open(gt_path))
+        data_IN, data_GT = transform(in_img, gt_img, crop_size)
+        return data_IN, data_GT, img_name
+
+    def augment_img(self, img, mode=0):
+        if mode == 0:
+            return img
+        elif mode == 1:
+            return np.flipud(np.rot90(img))
+        elif mode == 2:
+            return np.flipud(img)
+        elif mode == 3:
+            return np.rot90(img, k=3)
+        elif mode == 4:
+            return np.flipud(np.rot90(img, k=2))
+        elif mode == 5:
+            return np.rot90(img)
+        elif mode == 6:
+            return np.rot90(img, k=2)
+        elif mode == 7:
+            return np.flipud(np.flipud(np.rot90(img, k=3)))
+
+    def train_transform(self, img, label, patch_size=256):
+        ih, iw, _ = img.shape
+        patch_size = patch_size
+        ix = random.randrange(0, max(0, iw - patch_size))
+        iy = random.randrange(0, max(1, ih - patch_size + 1))
+        img = img[iy:iy + patch_size, ix: ix + patch_size]
+        label = label[iy:iy + patch_size, ix: ix + patch_size]
+
+        if self.regular_aug:
+            mode = random.randint(0, 7)
+            img = self.augment_img(img, mode=mode)
+            label = self.augment_img(label, mode=mode)
+            img = img.copy()
+            label = label.copy()
+
+        transform = transforms.Compose([transforms.ToTensor()])
+        img = transform(img)
+        label = transform(label)
+        return img, label
+
+    def __len__(self):
+        return len(self.imgs_in)
+
 class my_dataset(Dataset):
     def __init__(self, root_dir, crop_size=256, fix_sample_A=999, regular_aug=False):
         super(my_dataset, self).__init__()
