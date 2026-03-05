@@ -111,7 +111,10 @@ class InferenceDataset(Dataset):
         if self.transform:
             img = self.transform(img)
         if self.has_gt:
-            gt_path = os.path.join(self.gt_dir, self.image_names[idx])
+            gt_name = self.image_names[idx].replace('_in.', '_gt.')
+            gt_path = os.path.join(self.gt_dir, gt_name)
+            if not os.path.exists(gt_path):
+                gt_path = os.path.join(self.gt_dir, self.image_names[idx])
             gt = Image.open(gt_path).convert('RGB')
             if self.transform:
                 gt = self.transform(gt)
