@@ -16,6 +16,9 @@ from networks.MaeVit_arch import MaskedAutoencoderViT
 from networks.NAFNet_arch import NAFNet_CBAM
 from networks.shadow_matte import ShadowMattePredictor
 from networks.Split_images import process_split_image_with_shadow_matte
+from utils.UTILS1 import compute_psnr
+from utils.UTILS import compute_ssim
+import lpips
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -94,17 +97,25 @@ def merge_sliding_crops(crops, crop_positions, original_width, overlap_size):
     return merged
 
 class InferenceDataset(Dataset):
-    def __init__(self, dir_path, transform=None):
-        self.dir_path = dir_path
-        self.image_names = sorted(os.listdir(dir_path))
+    def __init__(self, input_dir, gt_dir=None, transform=None):
+        self.input_dir = input_dir
+        self.gt_dir = gt_dir
+        self.image_names = sorted(os.listdir(input_dir))
         self.transform = transform if transform is not None else transforms.Compose([transforms.ToTensor()])
+        self.has_gt = gt_dir is not None
     def __len__(self):
         return len(self.image_names)
     def __getitem__(self, idx):
-        img_path = os.path.join(self.dir_path, self.image_names[idx])
+        img_path = os.path.join(self.input_dir, self.image_names[idx])
         img = Image.open(img_path).convert('RGB')
         if self.transform:
             img = self.transform(img)
+        if self.has_gt:
+            gt_path = os.path.join(self.gt_dir, self.image_names[idx])
+            gt = Image.open(gt_path).convert('RGB')
+            if self.transform:
+                gt = self.transform(gt)
+            return img, gt, self.image_names[idx]
         return img, self.image_names[idx]
 
 def parse_args():
@@ -113,12 +124,13 @@ def parse_args():
     parser.add_argument("--vit_checkpoint", type=str, default="./files/vit.pth")
     parser.add_argument("--matte_generator_checkpoint", type=str, default="./files/shadow_matte_generator.pth")
     parser.add_argument("--input_dir", type=str, default="./test/")
+    parser.add_argument("--gt_dir", type=str, default=None, help="GT images directory for evaluation")
     parser.add_argument("--output_dir", type=str, default="./outputs")
     parser.add_argument("--batch_size", type=int, default=1)
     parser.add_argument("--nafn_patch_size", type=int, default=256)
     parser.add_argument("--overlap_size", type=int, default=128)
     parser.add_argument("--crop_stride", type=int, default=250)
-    parser.add_argument("--img_size", type=int, default=1000)
+    parser.add_argument("--img_size", type=int, default=None, help="Auto-detect if None")
     args = parser.parse_args()
     return args
 
@@ -152,16 +164,33 @@ def main():
     net_1.load_state_dict(torch.load(args.checkpoint, map_location=device))
     print(f"Loaded NAFNet checkpoint from {args.checkpoint}")
     
-    dataset = InferenceDataset(args.input_dir)
+    dataset = InferenceDataset(args.input_dir, args.gt_dir)
     loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=False, num_workers=4)
+    
+    lpips_fn = lpips.LPIPS(net='vgg').to(device)
+    
+    total_psnr = 0
+    total_ssim = 0
+    total_lpips = 0
+    count = 0
     
     s_time = time.time()
     with torch.no_grad():
-        for data, fname in loader:
-            inputs = data.to(device)
+        for data in loader:
+            if args.gt_dir is not None:
+                inputs, gts, fname = data
+            else:
+                inputs, fname = data
+                gts = None
+            inputs = inputs.to(device)
+            if gts is not None:
+                gts = gts.to(device)
             B, C, H, W = inputs.shape
             
-            crops, crop_positions = sliding_crop_left(inputs, patch_size=args.img_size, stride=args.crop_stride)
+            img_size = args.img_size if args.img_size is not None else H
+            crop_stride = args.crop_stride if args.crop_stride is not None else W
+            
+            crops, crop_positions = sliding_crop_left(inputs, patch_size=img_size, stride=crop_stride)
             processed_crops = []
             processed_mattes = []
             
@@ -193,8 +222,30 @@ def main():
                 out_path = os.path.join(args.output_dir, fname[i])
                 torchvision.utils.save_image(nafnet_output[i].cpu(), out_path, normalize=True)
                 print(f"Saved output image: {out_path}")
+                
+                if gts is not None:
+                    psnr_val = compute_psnr(nafnet_output[i:i+1], gts[i:i+1])
+                    ssim_val = compute_ssim(nafnet_output[i:i+1], gts[i:i+1])
+                    lpips_val = lpips_fn(nafnet_output[i:i+1], gts[i:i+1]).mean()
+                    
+                    total_psnr += psnr_val
+                    total_ssim += ssim_val
+                    total_lpips += lpips_val
+                    count += 1
+                    
+                    print(f"  PSNR: {psnr_val:.2f}, SSIM: {ssim_val:.4f}, LPIPS: {lpips_val:.4f}")
+    
     e_time = time.time()
-    print(f"Elapsed time: {e_time - s_time} seconds")
+    print(f"\nElapsed time: {e_time - s_time} seconds")
+    
+    if count > 0:
+        avg_psnr = total_psnr / count
+        avg_ssim = total_ssim / count
+        avg_lpips = total_lpips / count
+        print(f"\n=== Average Metrics ===")
+        print(f"PSNR: {avg_psnr:.2f}")
+        print(f"SSIM: {avg_ssim:.4f}")
+        print(f"LPIPS: {avg_lpips:.4f}")
 
 if __name__ == "__main__":
     matte_predictor = ShadowMattePredictor(
