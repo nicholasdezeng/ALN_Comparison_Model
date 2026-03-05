@@ -248,6 +248,7 @@ def main():
         print(f"LPIPS: {avg_lpips:.4f}")
 
 if __name__ == "__main__":
+    args = parse_args()
     matte_predictor = ShadowMattePredictor(
         model_path=args.matte_generator_checkpoint,
         img_size=256,
