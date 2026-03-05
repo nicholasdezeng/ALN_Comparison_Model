@@ -13,7 +13,7 @@ from PIL import Image
 import wandb
 import torchvision.utils as vutils
 from networks.MaeVit_arch import MaskedAutoencoderViT
-from networks.NAFNet_arch import NAFNet_CBAM
+from networks.NAFNet_arch import NAFNet
 from networks.shadow_matte import ShadowMattePredictor
 from networks.Split_images import process_split_image_with_shadow_matte
 from utils.UTILS1 import compute_psnr
@@ -143,7 +143,7 @@ def main():
         decoder_embed_dim=256, decoder_depth=6, decoder_num_heads=8,
         mlp_ratio=4, norm_layer=partial(nn.LayerNorm, eps=1e-6)
     )
-    net_1 = NAFNet_CBAM(
+    net_1 = NAFNet(
         img_channel=3, width=32, middle_blk_num=24,
         enc_blk_nums=[1, 1, 1, 28], dec_blk_nums=[1, 1, 1, 1], global_residual=False
     )
